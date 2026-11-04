@@ -139,14 +139,23 @@ app.get('/api/lb',(req,res)=>{
 });
 
 // ---------- relais réseau (TURN) : indispensables quand deux joueurs sont derrière des box ou en 4G ----------
-// METERED_APP + METERED_KEY (compte gratuit metered.ca) : identifiants demandés à Metered, gardés 10 min en cache ;
+// CF_TURN_ID + CF_TURN_TOKEN (Cloudflare, 1000 Go gratuits par mois) ou METERED_APP + METERED_KEY (Metered) : identifiants demandés au service, gardés 10 min en cache ;
 // sinon TURN_URLS (séparées par des virgules) + TURN_USER + TURN_PASS ; sinon seulement les serveurs STUN publics.
 const STUN=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
 let iceCache={t:0,v:null};
 async function iceServers(){
   if(iceCache.v&&Date.now()-iceCache.t<6e5)return iceCache.v;
   let v=null;
-  if(process.env.METERED_APP&&process.env.METERED_KEY){
+  // Cloudflare (1000 Go gratuits par mois) : identifiant de la clé TURN + son jeton d'API
+  if(process.env.CF_TURN_ID&&process.env.CF_TURN_TOKEN){
+    const base='https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(process.env.CF_TURN_ID)+'/credentials/',hd={'Authorization':'Bearer '+process.env.CF_TURN_TOKEN,'Content-Type':'application/json'},body=JSON.stringify({ttl:86400});
+    for(const ep of ['generate-ice-servers','generate']){if(v)break;
+      try{const r=await fetch(base+ep,{method:'POST',headers:hd,body,signal:AbortSignal.timeout(5000)});
+        if(r.ok){const j=await r.json();let L=j.iceServers;if(L&&!Array.isArray(L))L=[L];
+          // on garde les adresses utilisables depuis un navigateur (les ports 53 sont souvent bloqués par les navigateurs)
+          if(Array.isArray(L)&&L.length){L=L.map(x=>({...x,urls:(Array.isArray(x.urls)?x.urls:[x.urls]).filter(u=>!/:53(\?|$)/.test(u))})).filter(x=>x.urls.length);v=[...STUN,...L]}}
+        else console.warn('Cloudflare TURN :',ep,r.status)}catch(e){console.warn('Cloudflare TURN injoignable :',e.message)}}}
+  if(!v&&process.env.METERED_APP&&process.env.METERED_KEY){
     try{const r=await fetch('https://'+encodeURIComponent(process.env.METERED_APP)+'.metered.live/api/v1/turn/credentials?apiKey='+encodeURIComponent(process.env.METERED_KEY),{signal:AbortSignal.timeout(5000)});
       if(r.ok){const L=await r.json();if(Array.isArray(L)&&L.length)v=[...STUN,...L]}else console.warn('Metered :',r.status)}catch(e){console.warn('Metered injoignable :',e.message)}}
   if(!v&&process.env.TURN_URLS)v=[...STUN,{urls:process.env.TURN_URLS.split(',').map(x=>x.trim()).filter(Boolean),username:process.env.TURN_USER||'',credential:process.env.TURN_PASS||''}];
