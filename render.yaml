@@ -1,0 +1,15 @@
+# Plan Render : un service web Node gratuit. La base de données vient de Neon (gratuite, sans expiration) :
+# collez son adresse dans la variable DATABASE_URL du service (tableau de bord Render, onglet Environment).
+services:
+  - type: web
+    name: ossuaire
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /api/ping
+    envVars:
+      - key: SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
