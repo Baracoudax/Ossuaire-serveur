@@ -138,6 +138,22 @@ app.get('/api/lb',(req,res)=>{
   res.set('Cache-Control','public, max-age=10').json(L.slice(0,20).map(u=>({n:u.name,surv:u.surv|0,wave:u.wave|0,vw:u.vw|0,vk:u.vk|0,rk:u.rank,rkn:u.rkn|0,rs:u.rs})));
 });
 
+// ---------- relais réseau (TURN) : indispensables quand deux joueurs sont derrière des box ou en 4G ----------
+// METERED_APP + METERED_KEY (compte gratuit metered.ca) : identifiants demandés à Metered, gardés 10 min en cache ;
+// sinon TURN_URLS (séparées par des virgules) + TURN_USER + TURN_PASS ; sinon seulement les serveurs STUN publics.
+const STUN=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
+let iceCache={t:0,v:null};
+async function iceServers(){
+  if(iceCache.v&&Date.now()-iceCache.t<6e5)return iceCache.v;
+  let v=null;
+  if(process.env.METERED_APP&&process.env.METERED_KEY){
+    try{const r=await fetch('https://'+encodeURIComponent(process.env.METERED_APP)+'.metered.live/api/v1/turn/credentials?apiKey='+encodeURIComponent(process.env.METERED_KEY),{signal:AbortSignal.timeout(5000)});
+      if(r.ok){const L=await r.json();if(Array.isArray(L)&&L.length)v=[...STUN,...L]}else console.warn('Metered :',r.status)}catch(e){console.warn('Metered injoignable :',e.message)}}
+  if(!v&&process.env.TURN_URLS)v=[...STUN,{urls:process.env.TURN_URLS.split(',').map(x=>x.trim()).filter(Boolean),username:process.env.TURN_USER||'',credential:process.env.TURN_PASS||''}];
+  if(!v)v=STUN;
+  iceCache={t:Date.now(),v};return v}
+app.get('/api/ice',wrap(async(req,res)=>{if(limited('ice:'+ipOf(req),120,36e5))return res.status(429).json({err:'trop'});const v=await iceServers();res.set('Cache-Control','no-store').json({iceServers:v,turn:v.length>STUN.length})}));
+
 // ---------- parties publiques : l'hôte s'annonce toutes les 5 s, l'annonce s'efface après 15 s de silence ----------
 const games=new Map();
 setInterval(()=>{const now=Date.now();for(const [k,g] of games)if(now-g.t>15e3)games.delete(k)},5e3).unref();

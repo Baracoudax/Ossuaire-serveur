@@ -46,6 +46,26 @@ OSS_SERVER=https://ossuaire.onrender.com python3 outils/build_dist.py
 
 Le jeu affiche alors la section **Compte** dans Profil, le classement du serveur et la liste des parties publiques. Il passe aussi par ce serveur pour la mise en relation.
 
+### 5. Les relais réseau (indispensable pour jouer entre réseaux différents)
+
+Deux joueurs sur des réseaux différents (box, 4G, Wi-Fi d'entreprise) ne peuvent souvent pas se relier directement. Il leur faut un relais **TURN**.
+
+1. Créez un compte gratuit sur https://www.metered.ca, puis ouvrez **TURN Server** dans le tableau de bord.
+2. Notez le **nom de l'application** : c'est ce qui précède `.metered.live` dans l'adresse affichée, par exemple `ossuaire`.
+3. Créez une clé dans **Credentials / API Key** et copiez-la.
+4. Sur Render, ouvrez le service puis **Environment** et ajoutez deux variables :
+   - `METERED_APP` : le nom de l'application ;
+   - `METERED_KEY` : la clé.
+
+   Enregistrez : le service redémarre tout seul.
+5. Vérifiez sur `https://…onrender.com/api/ice` : la réponse doit contenir `"turn":true`.
+
+Le jeu demande ces relais au serveur avant chaque connexion. Il n'y a rien à changer dans les zips du jeu.
+
+L'offre gratuite de Metered couvre quelques Go de relais par mois. Seules les parties qui ne peuvent pas se relier directement passent par le relais.
+
+Autre possibilité : n'importe quel serveur TURN, avec les variables `TURN_URLS` (adresses séparées par des virgules), `TURN_USER` et `TURN_PASS`.
+
 ## Bon à savoir
 
 - **Mise en veille.** Le service gratuit s'endort après 15 minutes sans visite. Le premier joueur qui arrive attend jusqu'à une minute (le jeu affiche « Réveil du serveur… »). Pour l'éviter : un service de ping gratuit (UptimeRobot, toutes les 10 minutes sur `/api/ping`) ou l'offre payante de Render.
@@ -64,4 +84,5 @@ Le jeu affiche alors la section **Compte** dans Profil, le classement du serveur
 | `POST /api/rank` | fin de partie classée `{won, draw, perf}` → nouveau rang |
 | `POST /api/score`, `GET /api/lb?t=s\|v\|r` | scores et classements |
 | `GET/POST /api/games` | parties publiques |
+| `GET /api/ice` | relais réseau (STUN/TURN) pour les connexions entre joueurs |
 | `/peer` | mise en relation PeerJS |

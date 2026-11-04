@@ -13,3 +13,7 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: METERED_APP
+        sync: false
+      - key: METERED_KEY
+        sync: false
