@@ -57,6 +57,8 @@ setInterval(()=>{const now=Date.now();for(const [k,h] of hits)if(now-h.t>36e5)hi
 const ipOf=req=>(req.get('x-forwarded-for')||'').split(',')[0].trim()||req.socket.remoteAddress||'?';
 
 // ---------- rang classé : même calcul que le jeu, mais tenu ici ----------
+// semaine (lundi 0 h UTC) de la « Survie de la semaine » : même carte pour tout le monde, classement remis à zéro chaque lundi
+const WEEKU=()=>Math.floor((Math.floor(Date.now()/864e5)+3)/7);
 const SEASON=()=>{const d=new Date();return d.getUTCFullYear()*12+d.getUTCMonth()};
 const RKT=[0,1100,1250,1400,1550,1700];
 const tierOf=r=>{let i=0;RKT.forEach((v,j)=>{if(r>=v)i=j});return i};
@@ -127,26 +129,37 @@ app.post('/api/score',auth(async(req,res,u)=>{
   const b=req.body,n=x=>Math.max(0,Math.floor(+x||0));
   if(n(b.surv)<=5e6&&n(b.surv)>u.surv)u.surv=n(b.surv);if(n(b.wave)<=999&&n(b.wave)>u.wave)u.wave=n(b.wave);
   if(b.vw)u.vw=(u.vw|0)+1;u.vk=(u.vk|0)+Math.min(150,n(b.vk));
+  if(n(b.wk)>0&&n(b.wk)<=5e6&&(+b.wkw===WEEKU()||+b.wkw===WEEKU()-1)){const w=+b.wkw;if(!u.wk||u.wk.w<w||u.wk.w===w&&n(b.wk)>u.wk.s)u.wk={w,s:n(b.wk),v:Math.min(999,n(b.wave))}}
   await store.save(u);res.json({me:pub(u)});
 }));
 app.get('/api/lb',(req,res)=>{
-  const t=req.query.t==='r'?'r':req.query.t==='v'?'v':'s',S=SEASON();
+  const t=req.query.t==='r'?'r':req.query.t==='v'?'v':req.query.t==='w'?'w':'s',S=SEASON(),WK=WEEKU();
   let L=[...users.values()];
   if(t==='s')L=L.filter(u=>u.surv>0).sort((a,b)=>b.surv-a.surv);
+  else if(t==='w')L=L.filter(u=>u.wk&&u.wk.w===WK&&u.wk.s>0).sort((a,b)=>b.wk.s-a.wk.s);
   else if(t==='v')L=L.filter(u=>(u.vw|0)+(u.vk|0)>0).sort((a,b)=>(b.vw-a.vw)||(b.vk-a.vk));
   else L=L.filter(u=>u.rs===S&&(u.rkn|0)>0).sort((a,b)=>b.rank-a.rank);
-  res.set('Cache-Control','public, max-age=10').json(L.slice(0,20).map(u=>({n:u.name,surv:u.surv|0,wave:u.wave|0,vw:u.vw|0,vk:u.vk|0,rk:u.rank,rkn:u.rkn|0,rs:u.rs})));
+  res.set('Cache-Control','public, max-age=10').json(L.slice(0,20).map(u=>({n:u.name,surv:u.surv|0,wave:u.wave|0,vw:u.vw|0,vk:u.vk|0,rk:u.rank,rkn:u.rkn|0,rs:u.rs,...(u.wk&&u.wk.w===WK?{wks:u.wk.s,wkv:u.wk.v,wkw:u.wk.w}:{})})));
 });
 
 // ---------- relais réseau (TURN) : indispensables quand deux joueurs sont derrière des box ou en 4G ----------
-// METERED_APP + METERED_KEY (compte gratuit metered.ca) : identifiants demandés à Metered, gardés 10 min en cache ;
+// CF_TURN_ID + CF_TURN_TOKEN (Cloudflare, 1000 Go gratuits par mois) ou METERED_APP + METERED_KEY (Metered) : identifiants demandés au service, gardés 10 min en cache ;
 // sinon TURN_URLS (séparées par des virgules) + TURN_USER + TURN_PASS ; sinon seulement les serveurs STUN publics.
 const STUN=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']}];
 let iceCache={t:0,v:null};
 async function iceServers(){
   if(iceCache.v&&Date.now()-iceCache.t<6e5)return iceCache.v;
   let v=null;
-  if(process.env.METERED_APP&&process.env.METERED_KEY){
+  // Cloudflare (1000 Go gratuits par mois) : identifiant de la clé TURN + son jeton d'API
+  if(process.env.CF_TURN_ID&&process.env.CF_TURN_TOKEN){
+    const base='https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(process.env.CF_TURN_ID)+'/credentials/',hd={'Authorization':'Bearer '+process.env.CF_TURN_TOKEN,'Content-Type':'application/json'},body=JSON.stringify({ttl:86400});
+    for(const ep of ['generate-ice-servers','generate']){if(v)break;
+      try{const r=await fetch(base+ep,{method:'POST',headers:hd,body,signal:AbortSignal.timeout(5000)});
+        if(r.ok){const j=await r.json();let L=j.iceServers;if(L&&!Array.isArray(L))L=[L];
+          // on garde les adresses utilisables depuis un navigateur (les ports 53 sont souvent bloqués par les navigateurs)
+          if(Array.isArray(L)&&L.length){L=L.map(x=>({...x,urls:(Array.isArray(x.urls)?x.urls:[x.urls]).filter(u=>!/:53(\?|$)/.test(u))})).filter(x=>x.urls.length);v=[...STUN,...L]}}
+        else console.warn('Cloudflare TURN :',ep,r.status)}catch(e){console.warn('Cloudflare TURN injoignable :',e.message)}}}
+  if(!v&&process.env.METERED_APP&&process.env.METERED_KEY){
     try{const r=await fetch('https://'+encodeURIComponent(process.env.METERED_APP)+'.metered.live/api/v1/turn/credentials?apiKey='+encodeURIComponent(process.env.METERED_KEY),{signal:AbortSignal.timeout(5000)});
       if(r.ok){const L=await r.json();if(Array.isArray(L)&&L.length)v=[...STUN,...L]}else console.warn('Metered :',r.status)}catch(e){console.warn('Metered injoignable :',e.message)}}
   if(!v&&process.env.TURN_URLS)v=[...STUN,{urls:process.env.TURN_URLS.split(',').map(x=>x.trim()).filter(Boolean),username:process.env.TURN_USER||'',credential:process.env.TURN_PASS||''}];
