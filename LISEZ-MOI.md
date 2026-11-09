@@ -50,21 +50,22 @@ Le jeu affiche alors la section **Compte** dans Profil, le classement du serveur
 
 Deux joueurs sur des réseaux différents (box, 4G, Wi-Fi d'entreprise) ne peuvent souvent pas se relier directement. Il leur faut un relais **TURN**.
 
-1. Créez un compte gratuit sur https://www.metered.ca, puis ouvrez **TURN Server** dans le tableau de bord.
-2. Notez le **nom de l'application** : c'est ce qui précède `.metered.live` dans l'adresse affichée, par exemple `ossuaire`.
-3. Créez une clé dans **Credentials / API Key** et copiez-la.
+**Conseillé : Cloudflare, 1 000 Go gratuits par mois.**
+1. Créez un compte gratuit sur https://dash.cloudflare.com/sign-up. Aucun nom de domaine n'est nécessaire.
+2. Dans le menu de gauche, ouvrez **Realtime** (anciennement *Calls*), puis **TURN Server**, puis **Create**. Donnez un nom, par exemple `ossuaire`.
+3. Cloudflare affiche deux valeurs à copier tout de suite : **Turn Token ID** et **API Token**.
 4. Sur Render, ouvrez le service puis **Environment** et ajoutez deux variables :
-   - `METERED_APP` : le nom de l'application ;
-   - `METERED_KEY` : la clé.
+   - `CF_TURN_ID` : le Turn Token ID ;
+   - `CF_TURN_TOKEN` : l'API Token.
 
    Enregistrez : le service redémarre tout seul.
-5. Vérifiez sur `https://…onrender.com/api/ice` : la réponse doit contenir `"turn":true`.
+5. Vérifiez sur `https://…onrender.com/api/ice` : la réponse doit contenir `"turn":true` et des adresses `turn.cloudflare.com`.
+
+**Autres possibilités :**
+- Metered (essai gratuit de 500 Mo) : variables `METERED_APP` et `METERED_KEY`.
+- N'importe quel serveur TURN : variables `TURN_URLS`, `TURN_USER` et `TURN_PASS`.
 
 Le jeu demande ces relais au serveur avant chaque connexion. Il n'y a rien à changer dans les zips du jeu.
-
-L'offre gratuite de Metered couvre quelques Go de relais par mois. Seules les parties qui ne peuvent pas se relier directement passent par le relais.
-
-Autre possibilité : n'importe quel serveur TURN, avec les variables `TURN_URLS` (adresses séparées par des virgules), `TURN_USER` et `TURN_PASS`.
 
 ## Bon à savoir
 
@@ -72,6 +73,7 @@ Autre possibilité : n'importe quel serveur TURN, avec les variables `TURN_URLS`
 - **Changer le secret.** Si vous changez `SECRET`, tout le monde est déconnecté. Les comptes, eux, restent.
 - **Mot de passe oublié.** Il n'y a pas d'adresse e-mail, donc pas de récupération automatique. Pour remettre un compte à zéro, supprimez sa ligne dans la table `joueurs` depuis la console SQL de Neon.
 - **Limites.** Nombre d'essais de connexion limité par adresse et par pseudo. Au plus un résultat classé par minute et par compte. Écart éliminations-morts plafonné. Au plus 256 Ko de sauvegarde par joueur.
+- **Signalements des joueurs.** Le bouton « Signaler un problème » du jeu (hors de claude.ai) envoie le message, la capture d'écran et l'état de la partie au serveur. On les lit sur la page `https://ossuaire.onrender.com/signalements?cle=VOTRE_CLE`. La clé est la variable `REPORT_KEY` à ajouter dans Render (Environment). Sans elle, une clé est tirée de `SECRET` et affichée dans les journaux (Logs) au démarrage. Les 500 derniers signalements sont gardés. Chacun peut être supprimé depuis la page. Au plus 12 envois par heure et par adresse.
 - **Essai sur votre ordinateur.** Lancez `npm install` puis `node server.js` (port 8080). Sans `DATABASE_URL`, les comptes sont rangés dans `donnees.json`.
 
 ## Adresses du serveur
@@ -84,5 +86,12 @@ Autre possibilité : n'importe quel serveur TURN, avec les variables `TURN_URLS`
 | `POST /api/rank` | fin de partie classée `{won, draw, perf}` → nouveau rang |
 | `POST /api/score`, `GET /api/lb?t=s\|v\|r` | scores et classements |
 | `GET/POST /api/games` | parties publiques |
+| `POST /api/fr/hb` | signe de vie (statut en jeu) → amis, demandes reçues/envoyées, invitations |
+| `POST /api/fr/add`, `/accept`, `/decline`, `/remove`, `/invite`, `/uninv` | amis : demande par pseudo, réponse, retrait, invitation dans un groupe |
 | `GET /api/ice` | relais réseau (STUN/TURN) pour les connexions entre joueurs |
+| `POST /api/run` | début de partie `{m: s\|v}` → identifiant ; le score de fin n'est accepté qu'avec lui, une fois, si la durée et le score sont vraisemblables (refus notés dans le journal : `[score refusé]`) |
+| `POST /api/err` | erreur du jeu envoyée automatiquement, regroupée par signature (affichée en haut de `/signalements`) |
+| `POST /api/stat`, `GET /stats?cle=…` | statistiques d'équilibrage anonymes (armes, cartes, survie), envoyées en fin de partie ; page de lecture avec la clé des signalements |
+| `POST /api/report` | signalement envoyé depuis le jeu |
+| `GET /signalements?cle=…`, `GET /api/reports?cle=…` | lecture des signalements (clé `REPORT_KEY`) |
 | `/peer` | mise en relation PeerJS |
