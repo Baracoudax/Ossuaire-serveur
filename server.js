@@ -68,7 +68,9 @@ const SEASON=()=>{const d=new Date();return d.getUTCFullYear()*12+d.getUTCMonth(
 const RKT=[0,1100,1250,1400,1550,1700];
 const tierOf=r=>{let i=0;RKT.forEach((v,j)=>{if(r>=v)i=j});return i};
 function season(u){const n=SEASON();if(u.rs!==n){if(u.rs&&u.rank>0)u.rank=Math.round(1000+(u.rank-1000)/2);u.rs=n;u.rkn=0}if(!(u.rank>0))u.rank=1000}
-const pub=u=>(season(u),{name:u.name,rank:u.rank,rkn:u.rkn|0,rkb:u.rkb|0,rs:u.rs,surv:u.surv|0,wave:u.wave|0,vw:u.vw|0,vk:u.vk|0,created:u.created});
+// comptes testeurs (tout débloqué côté jeu : skins, tenues, capuches, Fusil des âmes) : variable DEV_USERS sur Render, noms séparés par des virgules
+const DEVS=new Set(String(process.env.DEV_USERS||'baracoudax').toLowerCase().split(',').map(x=>x.trim()).filter(Boolean));
+const pub=u=>(season(u),{name:u.name,rank:u.rank,rkn:u.rkn|0,rkb:u.rkb|0,rs:u.rs,surv:u.surv|0,wave:u.wave|0,vw:u.vw|0,vk:u.vk|0,created:u.created,...(DEVS.has(String(u.name).toLowerCase())?{dev:1}:{})});
 
 // ---------- application ----------
 const app=express();
